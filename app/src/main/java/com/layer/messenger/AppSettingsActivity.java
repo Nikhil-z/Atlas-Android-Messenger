@@ -109,6 +109,10 @@ public class AppSettingsActivity extends BaseActivity implements LayerConnection
                         .setPositiveButton(R.string.alert_button_logout, new DialogInterface.OnClickListener() {
                             @Override
                             public void onClick(DialogInterface dialog, int which) {
+                                if (Log.isPerfLoggable()) {
+                                    Log.perf("Deauthenticate button clicked");
+                                }
+
                                 if (Log.isLoggable(Log.VERBOSE)) {
                                     Log.v("Deauthenticating");
                                 }
@@ -120,6 +124,10 @@ public class AppSettingsActivity extends BaseActivity implements LayerConnection
                                 App.deauthenticate(new Util.DeauthenticationCallback() {
                                     @Override
                                     public void onDeauthenticationSuccess(LayerClient client) {
+                                        if (Log.isPerfLoggable()) {
+                                            Log.perf("Received callback for successful deauthentication");
+                                        }
+
                                         if (Log.isLoggable(Log.VERBOSE)) {
                                             Log.v("Successfully deauthenticated");
                                         }

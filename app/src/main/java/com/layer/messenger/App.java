@@ -3,12 +3,14 @@ package com.layer.messenger;
 import android.app.Activity;
 import android.app.Application;
 import android.content.Context;
+import android.os.StrictMode;
 
 import com.layer.atlas.messagetypes.text.TextCellFactory;
 import com.layer.atlas.messagetypes.threepartimage.ThreePartImageUtils;
 import com.layer.atlas.util.Util;
 import com.layer.atlas.util.picasso.requesthandlers.MessagePartRequestHandler;
 import com.layer.messenger.util.AuthenticationProvider;
+import com.layer.messenger.util.Log;
 import com.layer.sdk.LayerClient;
 import com.squareup.picasso.Picasso;
 
@@ -52,6 +54,19 @@ public class App extends Application {
             com.layer.atlas.util.Log.setLoggingEnabled(true);
             com.layer.messenger.util.Log.setAlwaysLoggable(true);
             LayerClient.setLoggingEnabled(this, true);
+
+            StrictMode.setThreadPolicy(new StrictMode.ThreadPolicy.Builder()
+                    .detectAll()
+                    .penaltyLog()
+                    .build());
+            StrictMode.setVmPolicy(new StrictMode.VmPolicy.Builder()
+                    .detectAll()
+                    .penaltyLog()
+                    .build());
+        }
+
+        if (Log.isPerfLoggable()) {
+            Log.perf("Application onCreate()");
         }
 
         // Allow the LayerClient to track app state

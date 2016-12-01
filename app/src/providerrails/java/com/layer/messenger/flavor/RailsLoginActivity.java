@@ -71,6 +71,10 @@ public class RailsLoginActivity extends AppCompatActivity {
     }
 
     private void login(final String email, final String password) {
+        if (Log.isPerfLoggable()) {
+            Log.perf("LoginActivity performing login attempt");
+        }
+
         mEmail.setEnabled(false);
         mPassword.setEnabled(false);
         final ProgressDialog progressDialog = new ProgressDialog(RailsLoginActivity.this);
@@ -80,6 +84,10 @@ public class RailsLoginActivity extends AppCompatActivity {
                 new AuthenticationProvider.Callback() {
                     @Override
                     public void onSuccess(AuthenticationProvider provider, String userId) {
+                        if (Log.isPerfLoggable()) {
+                            Log.perf("LoginActivity received success callback for login attempt");
+                        }
+
                         progressDialog.dismiss();
                         if (Log.isLoggable(Log.VERBOSE)) {
                             Log.v("Successfully authenticated as `" + email + "` with userId `" + userId + "`");
