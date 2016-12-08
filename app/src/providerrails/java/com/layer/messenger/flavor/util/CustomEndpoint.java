@@ -75,6 +75,11 @@ public class CustomEndpoint {
             @Override
             public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
                 setEndpointName((String) parent.getSelectedItem());
+                LayerClient layerClient = App.getLayerClient();
+                if (layerClient != null) {
+                    layerClient.close();
+                }
+                App.createLayerClientAsynchronously();
             }
 
             @Override

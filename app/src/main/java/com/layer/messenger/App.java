@@ -3,6 +3,7 @@ package com.layer.messenger;
 import android.app.Activity;
 import android.app.Application;
 import android.content.Context;
+import android.os.AsyncTask;
 import android.os.StrictMode;
 
 import com.layer.atlas.messagetypes.text.TextCellFactory;
@@ -15,6 +16,7 @@ import com.layer.sdk.LayerClient;
 import com.squareup.picasso.Picasso;
 
 import java.util.Arrays;
+import java.util.concurrent.CountDownLatch;
 
 /**
  * App provides static access to a LayerClient and other Atlas and Messenger context, including
@@ -39,6 +41,7 @@ public class App extends Application {
     private static LayerClient sLayerClient;
     private static AuthenticationProvider sAuthProvider;
     private static Picasso sPicasso;
+    private static CountDownLatch sLayerClientCreationLatch;
 
 
     //==============================================================================================
@@ -73,6 +76,9 @@ public class App extends Application {
         LayerClient.applicationCreated(this);
 
         sInstance = this;
+
+        // Create a LayerClient instance off of the main thread
+        createLayerClientAsynchronously();
     }
 
     public static Application getInstance() {
@@ -92,7 +98,8 @@ public class App extends Application {
      * @return `true` if the user has been routed to another Activity, or `false` otherwise.
      */
     public static boolean routeLogin(Activity from) {
-        return getAuthenticationProvider().routeLogin(getLayerClient(), getLayerAppId(), from);
+        LayerClient layerClient = getLayerClient();
+        return getAuthenticationProvider().routeLogin(layerClient, getLayerAppId(), from);
     }
 
     /**
@@ -141,37 +148,78 @@ public class App extends Application {
     //==============================================================================================
 
     /**
-     * Gets or creates a LayerClient, using a default set of LayerClient.Options and flavor-specific
-     * App ID and Options from the `generateLayerClient` method.  Returns `null` if the flavor was
-     * unable to create a LayerClient (due to no App ID, etc.).
+     * Gets a LayerClient. Returns `null` if the LayerClient hasn't been created yet, or if the
+     * the flavor was unable to create a LayerClient (due to no App ID, etc.).
      *
      * @return New or existing LayerClient, or `null` if a LayerClient could not be constructed.
+     * @see App#createLayerClientAsynchronously()
      * @see Flavor#generateLayerClient(Context, LayerClient.Options)
      */
     public static LayerClient getLayerClient() {
-        if (sLayerClient == null) {
-            // Custom options for constructing a LayerClient
-            LayerClient.Options options = new LayerClient.Options()
+        awaitLayerClientCreation();
+        return sLayerClient;
+    }
+
+    /**
+     * If a LayerClient creation is in progress, make the current thread wait until the creation
+     * is completed.
+     */
+    private static void awaitLayerClientCreation() {
+        if (sLayerClientCreationLatch != null) {
+            try {
+                sLayerClientCreationLatch.await();
+            } catch (InterruptedException e) {
+                Log.e("Thread interrupted while waiting for LayerClient initialization");
+            }
+        }
+    }
+
+    /**
+     * Creates a LayerClient, using a default set of LayerClient.Options and flavor-specific
+     * App ID and Options from the `generateLayerClient` method. This performs the creation in
+     * an AsyncTask.
+     *
+     * @see Flavor#generateLayerClient(Context, LayerClient.Options)
+     */
+    public static void createLayerClientAsynchronously() {
+        // You may only want to do this when the LayerClient is null to avoid multiple calls
+        // to `LayerClient.newInstance` when an instance already exists. This is currently allowed
+        // to provide support for switching environments via a `CustomEndpoint`.
+
+        sLayerClientCreationLatch = new CountDownLatch(1);
+        new AsyncTask<Void, Void, Void>() {
+
+            @Override
+            protected Void doInBackground(Void... params) {
+                try {
+                    // Custom options for constructing a LayerClient
+                    LayerClient.Options options = new LayerClient.Options()
 
                     /* Fetch the minimum amount per conversation when first authenticated */
-                    .historicSyncPolicy(LayerClient.Options.HistoricSyncPolicy.FROM_LAST_MESSAGE)
-                    
+                            .historicSyncPolicy(LayerClient.Options.HistoricSyncPolicy.FROM_LAST_MESSAGE)
+
                     /* Automatically download text and ThreePartImage info/preview */
-                    .autoDownloadMimeTypes(Arrays.asList(
-                            TextCellFactory.MIME_TYPE,
-                            ThreePartImageUtils.MIME_TYPE_INFO,
-                            ThreePartImageUtils.MIME_TYPE_PREVIEW));
+                            .autoDownloadMimeTypes(Arrays.asList(
+                                    TextCellFactory.MIME_TYPE,
+                                    ThreePartImageUtils.MIME_TYPE_INFO,
+                                    ThreePartImageUtils.MIME_TYPE_PREVIEW));
 
-            // Allow flavor to specify Layer App ID and customize Options.
-            sLayerClient = sFlavor.generateLayerClient(sInstance, options);
+                    // Allow flavor to specify Layer App ID and customize Options.
+                    sLayerClient = sFlavor.generateLayerClient(sInstance, options);
 
-            // Flavor was unable to generate Layer Client (no App ID, etc.)
-            if (sLayerClient == null) return null;
+                    // Flavor was unable to generate Layer Client (no App ID, etc.)
+                    if (sLayerClient == null) {
+                        return null;
+                    }
 
-            /* Register AuthenticationProvider for handling authentication challenges */
-            sLayerClient.registerAuthenticationListener(getAuthenticationProvider());
-        }
-        return sLayerClient;
+                    /* Register AuthenticationProvider for handling authentication challenges */
+                    sLayerClient.registerAuthenticationListener(getAuthenticationProvider());
+                    return null;
+                } finally {
+                    sLayerClientCreationLatch.countDown();
+                }
+            }
+        }.execute();
     }
 
     public static String getLayerAppId() {
@@ -183,8 +231,7 @@ public class App extends Application {
             sAuthProvider = sFlavor.generateAuthenticationProvider(sInstance);
 
             // If we have cached credentials, try authenticating with Layer
-            LayerClient layerClient = getLayerClient();
-            if (layerClient != null && sAuthProvider.hasCredentials()) layerClient.authenticate();
+            if (sLayerClient != null && sAuthProvider.hasCredentials()) sLayerClient.authenticate();
         }
         return sAuthProvider;
     }
